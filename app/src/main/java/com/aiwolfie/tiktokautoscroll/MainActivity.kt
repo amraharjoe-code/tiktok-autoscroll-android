@@ -4,16 +4,18 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.view.Gravity
 import android.widget.*
-import android.text.InputType
 
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
     private lateinit var mode: RadioGroup
-    private lateinit var interval: EditText
-    private lateinit var minDelay: EditText
-    private lateinit var maxDelay: EditText
+    private lateinit var fixed: EditText
+    private lateinit var randomMin: EditText
+    private lateinit var randomMax: EditText
+    private lateinit var delayMin: EditText
+    private lateinit var delayMax: EditText
     private lateinit var status: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,27 +32,32 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         })
         box.addView(TextView(this).apply {
-            text = "Dua mode otomatisasi scroll untuk penggunaan pribadi"
+            text = "Fixed Timer + Random Timer"
             textSize = 14f
             setPadding(0, 5, 0, 18)
         })
 
         box.addView(label("Pilih mode"))
         mode = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        mode.addView(RadioButton(this).apply { id = MODE_TIMER; text = "Opsi 1 — Timer Scroll" })
-        mode.addView(RadioButton(this).apply { id = MODE_DETECT; text = "Opsi 2 — Auto Detect (best effort)" })
+        mode.addView(RadioButton(this).apply { id = MODE_FIXED; text = "Opsi 1 — Fixed Timer" })
+        mode.addView(RadioButton(this).apply { id = MODE_RANDOM; text = "Opsi 2 — Random Timer" })
         box.addView(mode)
 
-        box.addView(label("Interval timer (detik)"))
-        interval = numberField("30"); box.addView(interval)
-        box.addView(label("Jeda minimum sebelum swipe (ms)"))
-        minDelay = numberField("500"); box.addView(minDelay)
-        box.addView(label("Jeda maksimum sebelum swipe (ms)"))
-        maxDelay = numberField("1500"); box.addView(maxDelay)
+        box.addView(label("Fixed Timer — interval (detik)"))
+        fixed = numberField("30"); box.addView(fixed)
+        box.addView(label("Random Timer — minimum interval (detik)"))
+        randomMin = numberField("20"); box.addView(randomMin)
+        box.addView(label("Random Timer — maksimum interval (detik)"))
+        randomMax = numberField("45"); box.addView(randomMax)
+        box.addView(label("Jeda acak sebelum swipe minimum (ms)"))
+        delayMin = numberField("400"); box.addView(delayMin)
+        box.addView(label("Jeda acak sebelum swipe maksimum (ms)"))
+        delayMax = numberField("1200"); box.addView(delayMax)
 
         box.addView(TextView(this).apply {
-            text = "Swipe berlangsung sekitar 250 ms. Jeda dipilih acak antara batas minimum dan maksimum."
-            textSize = 12f; setPadding(0, 8, 0, 12)
+            text = "Random Timer memilih interval baru setelah setiap swipe. Swipe hanya berjalan saat TikTok berada di layar depan."
+            textSize = 12f
+            setPadding(0, 10, 0, 14)
         })
         box.addView(Button(this).apply {
             text = "1. Aktifkan Accessibility Service"
@@ -58,12 +65,12 @@ class MainActivity : Activity() {
         })
         box.addView(Button(this).apply {
             text = "2. Simpan Pengaturan"
-            setOnClickListener { save() }
+            setOnClickListener { saveSettings() }
         })
         box.addView(Button(this).apply {
             text = "START"
             setOnClickListener {
-                save()
+                saveSettings()
                 prefs.edit().putBoolean(KEY_ENABLED, true).apply()
                 status.text = "Status: AKTIF — buka TikTok. Tekan STOP untuk berhenti."
             }
@@ -75,39 +82,63 @@ class MainActivity : Activity() {
                 status.text = "Status: berhenti"
             }
         })
-        status = TextView(this).apply { textSize = 16f; setPadding(0, 14, 0, 12) }
+        status = TextView(this).apply {
+            textSize = 16f
+            setPadding(0, 14, 0, 12)
+        }
         box.addView(status)
         box.addView(TextView(this).apply {
-            text = "Auto Detect bergantung pada label aksesibilitas seperti Replay/Watch again. TikTok tidak selalu mengekspos indikator akhir video; gunakan Timer jika deteksi tidak bekerja."
-            textSize = 12f; setPadding(0, 8, 0, 12)
-        })
-        box.addView(TextView(this).apply {
-            text = "Privasi: Accessibility Service dapat membaca struktur tampilan aplikasi aktif dan mengirim swipe. Aktifkan hanya saat diperlukan. Aplikasi tidak membaca password, pesan, atau mengirim data ke server."
+            text = "Auto Detect akhir video dihapus. Accessibility Service hanya memeriksa aplikasi foreground untuk membatasi swipe ke TikTok. Tidak ada data yang dikirim ke server."
             textSize = 12f
         })
         setContentView(page)
-        load()
+        loadSettings()
     }
 
-    private fun label(s: String) = TextView(this).apply { text = s; textSize = 14f; setPadding(0, 12, 0, 4) }
-    private fun numberField(v: String) = EditText(this).apply {
-        setSingleLine(true); inputType = InputType.TYPE_CLASS_NUMBER; setText(v)
+    private fun label(value: String) = TextView(this).apply {
+        text = value
+        textSize = 14f
+        setPadding(0, 12, 0, 4)
     }
-    private fun load() {
-        mode.check(if (prefs.getString(KEY_MODE, TIMER) == DETECT) MODE_DETECT else MODE_TIMER)
-        interval.setText(prefs.getInt(KEY_INTERVAL, 30).toString())
-        minDelay.setText(prefs.getInt(KEY_MIN, 500).toString())
-        maxDelay.setText(prefs.getInt(KEY_MAX, 1500).toString())
+
+    private fun numberField(value: String) = EditText(this).apply {
+        setSingleLine(true)
+        inputType = InputType.TYPE_CLASS_NUMBER
+        setText(value)
+    }
+
+    private fun loadSettings() {
+        mode.check(if (prefs.getString(KEY_MODE, FIXED) == RANDOM) MODE_RANDOM else MODE_FIXED)
+        fixed.setText(prefs.getInt(KEY_FIXED_SECONDS, 30).toString())
+        randomMin.setText(prefs.getInt(KEY_RANDOM_MIN_SECONDS, 20).toString())
+        randomMax.setText(prefs.getInt(KEY_RANDOM_MAX_SECONDS, 45).toString())
+        delayMin.setText(prefs.getInt(KEY_DELAY_MIN_MS, 400).toString())
+        delayMax.setText(prefs.getInt(KEY_DELAY_MAX_MS, 1200).toString())
         status.text = if (prefs.getBoolean(KEY_ENABLED, false)) "Status: AKTIF" else "Status: berhenti"
     }
-    private fun save() {
-        val seconds = interval.text.toString().toIntOrNull()?.coerceIn(5, 3600) ?: 30
-        val min = minDelay.text.toString().toIntOrNull()?.coerceIn(100, 10000) ?: 500
-        val max = maxOf(min, maxDelay.text.toString().toIntOrNull()?.coerceIn(100, 10000) ?: 1500)
+
+    private fun saveSettings() {
+        val fixedValue = fixed.text.toString().toIntOrNull()?.coerceIn(5, 3600) ?: 30
+        val minSeconds = randomMin.text.toString().toIntOrNull()?.coerceIn(5, 3600) ?: 20
+        val maxSeconds = maxOf(minSeconds, randomMax.text.toString().toIntOrNull()?.coerceIn(5, 3600) ?: 45)
+        val minMs = delayMin.text.toString().toIntOrNull()?.coerceIn(100, 10000) ?: 400
+        val maxMs = maxOf(minMs, delayMax.text.toString().toIntOrNull()?.coerceIn(100, 10000) ?: 1200)
+        val selectedMode = if (mode.checkedRadioButtonId == MODE_RANDOM) RANDOM else FIXED
+
         prefs.edit()
-            .putString(KEY_MODE, if (mode.checkedRadioButtonId == MODE_DETECT) DETECT else TIMER)
-            .putInt(KEY_INTERVAL, seconds).putInt(KEY_MIN, min).putInt(KEY_MAX, max).apply()
-        minDelay.setText(min.toString()); maxDelay.setText(max.toString())
+            .putString(KEY_MODE, selectedMode)
+            .putInt(KEY_FIXED_SECONDS, fixedValue)
+            .putInt(KEY_RANDOM_MIN_SECONDS, minSeconds)
+            .putInt(KEY_RANDOM_MAX_SECONDS, maxSeconds)
+            .putInt(KEY_DELAY_MIN_MS, minMs)
+            .putInt(KEY_DELAY_MAX_MS, maxMs)
+            .apply()
+
+        fixed.setText(fixedValue.toString())
+        randomMin.setText(minSeconds.toString())
+        randomMax.setText(maxSeconds.toString())
+        delayMin.setText(minMs.toString())
+        delayMax.setText(maxMs.toString())
         Toast.makeText(this, "Pengaturan disimpan", Toast.LENGTH_SHORT).show()
     }
 
@@ -115,12 +146,14 @@ class MainActivity : Activity() {
         const val PREFS = "autoscroll_settings"
         const val KEY_ENABLED = "enabled"
         const val KEY_MODE = "mode"
-        const val KEY_INTERVAL = "interval_seconds"
-        const val KEY_MIN = "min_delay_ms"
-        const val KEY_MAX = "max_delay_ms"
-        const val TIMER = "timer"
-        const val DETECT = "detect"
-        const val MODE_TIMER = 1001
-        const val MODE_DETECT = 1002
+        const val KEY_FIXED_SECONDS = "fixed_seconds"
+        const val KEY_RANDOM_MIN_SECONDS = "random_min_seconds"
+        const val KEY_RANDOM_MAX_SECONDS = "random_max_seconds"
+        const val KEY_DELAY_MIN_MS = "min_delay_ms"
+        const val KEY_DELAY_MAX_MS = "max_delay_ms"
+        const val FIXED = "fixed"
+        const val RANDOM = "random"
+        const val MODE_FIXED = 2101
+        const val MODE_RANDOM = 2102
     }
 }
